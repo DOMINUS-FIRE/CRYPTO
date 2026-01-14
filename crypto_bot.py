@@ -194,22 +194,31 @@ async def cmd_status(message: Message):
     
     await cleanup_messages(chat_id)
     
-    now = datetime.utcnow()  # Используем UTC время
+    now = datetime.now()
     next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
     time_left = next_hour - now
     
+    # Рассчитываем минуты и секунды до следующего сигнала
+    total_seconds = time_left.seconds
+    minutes_left = total_seconds // 60
+    seconds_left = total_seconds % 60
+    
+    # Проверяем, если до следующего сигнала меньше минуты (например, прямо сейчас)
+    if minutes_left == 0 and seconds_left < 60:
+        next_time_text = "СЕЙЧАС"
+    else:
+        next_time_text = f"через {minutes_left} мин {seconds_left} сек"
+    
     status_text = f"""📊 <b>СТАТУС БОТА</b>
 
-🕐 Текущее время UTC: {now.strftime('%H:%M:%S')}
-⏰ Следующая рассылка: через {time_left.seconds // 60} мин
-📅 Ближайшее время: {next_hour.strftime('%H:%M')} UTC
+⏰ Следующая рассылка: {next_time_text}
 
 📨 Сообщений в базе: {len(messages_data)}
 👥 Подписчиков: {len(subscribers)}
 🔔 Ваша подписка: {'✅ АКТИВНА' if user_id in subscribers else '❌ НЕ АКТИВНА'}
 
 📍 Канал: @crypto_rul_FAI
-📢 Рассылка: каждый час в 00 минут UTC"""
+📢 Рассылка: каждый час в 00 минут"""
     
     sent_message = await message.answer(status_text)
     add_to_history(chat_id, sent_message.message_id)
@@ -220,39 +229,58 @@ async def cmd_schedule(message: Message):
     
     await cleanup_messages(chat_id)
     
-    now = datetime.utcnow()  # Используем UTC время
-    # Находим следующее время рассылки (следующий час в 00 минут)
+    now = datetime.now()
+    
+    # Находим время следующей рассылки (следующий час в 00 минут)
     next_broadcast = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
     time_left = next_broadcast - now
+    
+    # Рассчитываем минуты и секунды до следующего сигнала
+    total_seconds = time_left.seconds
+    minutes_left = total_seconds // 60
+    seconds_left = total_seconds % 60
+    
+    if minutes_left == 0 and seconds_left < 60:
+        next_time_text = "СЕЙЧАС"
+    else:
+        next_time_text = f"{minutes_left} мин {seconds_left} сек"
     
     # Генерируем расписание следующих 5 рассылок
     schedule_times = []
     current = next_broadcast
     
     for i in range(5):
-        schedule_times.append(current)
+        time_until = current - now
+        total_sec = time_until.seconds
+        mins = total_sec // 60
+        secs = total_sec % 60
+        
+        if i == 0:
+            schedule_times.append(f"Следующий сигнал: через {mins} мин {secs} сек")
+        else:
+            schedule_times.append(f"Через {i+1} час: через {mins} мин {secs} сек")
+        
         current = current + timedelta(hours=1)
     
     schedule_text = f"""⏰ <b>РАСПИСАНИЕ РАССЫЛКИ</b>
 
 <code>────────────────────</code>
-<b>Следующая отправка:</b>
-🕐 {next_broadcast.strftime('%H:%M')} UTC
-⏳ Через {time_left.seconds // 60} минут {time_left.seconds % 60} секунд
+<b>До следующего сигнала:</b>
+⏳ {next_time_text}
 
 <code>────────────────────</code>
 <b>Ближайшие 5 рассылок:</b>
 """
     
-    for i, time_obj in enumerate(schedule_times, 1):
-        schedule_text += f"• {time_obj.strftime('%H:%M')} UTC\n"
+    for i, time_str in enumerate(schedule_times, 1):
+        schedule_text += f"• {time_str}\n"
     
     schedule_text += f"""
 <code>────────────────────</code>
 <b>Статистика:</b>
 • Сообщений готово: {len(messages_data)}
 • Подписчиков: {len(subscribers)}
-• Текущее время UTC: {now.strftime('%H:%M:%S')}"""
+• Частота: каждый час в 00 минут"""
     
     sent_message = await message.answer(schedule_text)
     add_to_history(chat_id, sent_message.message_id)
@@ -325,7 +353,6 @@ async def send_hourly_message():
             return False
         
         msg = random.choice(messages_data)
-        # Убираем time_str - больше не показываем время в заголовке
         
         formatted_message = f"""
 🚀 <b>КРИПТО-СИГНАЛ</b>
@@ -411,7 +438,7 @@ async def handle_all_messages(message: Message):
 /schedule - Расписание
 
 📍 Канал: @crypto_rul_FAI
-⏰ Рассылка: каждый час в 00 минут UTC"""
+⏰ Рассылка: каждый час в 00 минут"""
         
         sent_message = await message.answer(response)
         add_to_history(chat_id, sent_message.message_id)
@@ -439,7 +466,7 @@ async def main():
     logger.info(f"👥 Подписчиков: {len(subscribers)}")
     logger.info(f"📢 Канал: {TARGET_CHAT_ID}")
     logger.info(f"🌐 Веб-сервер: порт {PORT}")
-    logger.info("⏰ Рассылка: каждый час в 00 минут UTC")
+    logger.info("⏰ Рассылка: каждый час в 00 минут")
     logger.info("=" * 60)
     
     # Запускаем поллинг бота
