@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: crypto-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python crypto_bot.py
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: API_TOKEN
+        sync: false
+      - key: TARGET_CHAT_ID
+        value: "@crypto_rul_FAI"
