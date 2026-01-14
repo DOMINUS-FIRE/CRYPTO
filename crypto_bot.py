@@ -3,6 +3,7 @@ import json
 import random
 import logging
 import os
+import threading
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -10,13 +11,12 @@ from aiogram.types import Message
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 
-# === КОНФИГУРАЦИЯ ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ===
-# Render.com автоматически устанавливает эти переменные
+# === КОНФИГУРАЦИЯ ===
 API_TOKEN = os.environ.get("API_TOKEN", "8491120802:AAHTQOxZhE41tDCrDg0yeOEBmrQA7PBy4Ms")
 TARGET_CHAT_ID = os.environ.get("TARGET_CHAT_ID", "@crypto_rul_FAI")
 SUBSCRIBERS_FILE = "subscribers.json"
 
-# === ЛОГГИРОВАНИЕ ДЛЯ RENDER ===
+# === ЛОГГИРОВАНИЕ ===
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -26,11 +26,10 @@ logger = logging.getLogger(__name__)
 # Проверяем обязательные переменные
 if not API_TOKEN or API_TOKEN == "your_bot_token_here":
     logger.error("❌ API_TOKEN не установлен!")
-    logger.error("Установите переменную окружения API_TOKEN на Render.com")
     exit(1)
 
 logger.info(f"🚀 Бот запускается на Render.com")
-logger.info(f"🔑 Токен: {'установлен' if API_TOKEN else 'не установлен'}")
+logger.info(f"🔑 Токен: установлен")
 logger.info(f"📢 Канал: {TARGET_CHAT_ID}")
 
 bot = Bot(
@@ -47,21 +46,7 @@ def load_messages():
             return data['messages']
     except FileNotFoundError:
         logger.error("Файл messages.json не найден!")
-        logger.info("Создаю пустой файл сообщений...")
-        # Создаем базовый файл если его нет
-        base_messages = {
-            "messages": [
-                {
-                    "id": 1,
-                    "text": "🚀 <b>Бот запущен на Render.com!</b>\n\n✅ Система работает корректно\n⏰ Рассылка каждый час в 00 минут\n📍 Канал: @crypto_rul_FAI",
-                    "crypto": "BITCOIN",
-                    "price": 42000
-                }
-            ]
-        }
-        with open('messages.json', 'w', encoding='utf-8') as f:
-            json.dump(base_messages, f, ensure_ascii=False, indent=2)
-        return base_messages['messages']
+        return []
     except Exception as e:
         logger.error(f"Ошибка загрузки сообщений: {e}")
         return []
@@ -76,9 +61,6 @@ def load_subscribers():
             data = json.load(f)
             return set(data.get('subscribers', []))
     except FileNotFoundError:
-        logger.info("Файл subscribers.json не найден, создаю новый...")
-        with open(SUBSCRIBERS_FILE, 'w', encoding='utf-8') as f:
-            json.dump({'subscribers': []}, f)
         return set()
     except Exception as e:
         logger.error(f"Ошибка загрузки подписчиков: {e}")
@@ -94,13 +76,7 @@ def save_subscribers(subscribers):
 subscribers = load_subscribers()
 logger.info(f"Загружено {len(subscribers)} подписчиков")
 
-# === ОСТАЛЬНОЙ КОД ОСТАЕТСЯ БЕЗ ИЗМЕНЕНИЙ ===
-# [Вставьте сюда весь остальной код из вашего crypto_bot.py, начиная с user_last_messages = {} и до конца]
-# Просто скопируйте весь код после этой строки из вашего текущего crypto_bot.py
-
-# ... [весь ваш существующий код команд и функций] ...
-
-# === ХРАНЕНИЕ ID СООБЩЕНИЙ ДЛЯ ОЧИСТКИ ===
+# === ХРАНЕНИЕ ID СООБЩЕНИЙ ===
 user_last_messages = {}
 
 # === ПРИВЕТСТВЕННОЕ СООБЩЕНИЕ ===
@@ -151,7 +127,6 @@ async def cmd_start(message: Message):
     
     await cleanup_messages(chat_id)
     
-    is_subscribed = user_id in subscribers
     welcome = WELCOME_MESSAGE.replace("ПРИВЕТСТВИЕ ОТ", f"Привет, {user_name}!")
     
     sent_message = await message.answer(welcome)
@@ -243,7 +218,6 @@ async def cmd_schedule(message: Message):
     next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
     time_left = next_hour - now
     
-    # Рассчитываем ближайшие 5 часов рассылки
     schedule_times = []
     current = now.replace(minute=0, second=0, microsecond=0)
     
@@ -309,6 +283,9 @@ async def scheduled_broadcast():
     # Ждем полную инициализацию
     await asyncio.sleep(5)
     
+    # Флаг для предотвращения двойной отправки при запуске в 00 минут
+    first_run = True
+    
     while True:
         try:
             now = datetime.now()
@@ -317,11 +294,22 @@ async def scheduled_broadcast():
             
             # Если сейчас 00 минут - отправляем
             if current_minute == 0:
+                # Если это первый запуск и мы в 00 минут - пропускаем
+                if first_run:
+                    logger.info(f"⚠️ Первый запуск в {now.strftime('%H:%M')}, пропускаю отправку")
+                    first_run = False
+                    # Ждем до следующего часа
+                    seconds_to_wait = (60 - current_second) + 1
+                    await asyncio.sleep(seconds_to_wait)
+                    continue
+                
                 logger.info(f"🕐 Время {now.strftime('%H:%M:%S')} - отправляю сообщение...")
                 await send_hourly_message()
-                # Ждем 61 минуту чтобы не отправить дважды
+                
+                # Ждем 61 минуту чтобы не отправить дважды в 00 минут
                 await asyncio.sleep(3660)
             else:
+                first_run = False
                 # Вычисляем сколько секунд осталось до следующего часа
                 minutes_left = 60 - current_minute
                 seconds_left = minutes_left * 60 - current_second
@@ -381,6 +369,39 @@ async def send_hourly_message():
         logger.error(f"❌ Ошибка отправки: {e}")
         return False
 
+# === ПРОСТОЙ ВЕБ-СЕРВЕР ДЛЯ RENDER ===
+def run_simple_server():
+    """Запуск простого HTTP сервера для Render"""
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    
+    class SimpleHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == '/':
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html; charset=utf-8')
+                self.end_headers()
+                # Обычная строка, потом кодируем в байты
+                html_content = "<h1>Crypto Bot is running!</h1><p>Bot is active and working.</p>"
+                response = html_content.encode('utf-8')
+                self.wfile.write(response)
+            elif self.path in ['/health', '/healthz']:
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                response = b'{"status": "ok", "bot": "running"}'
+                self.wfile.write(response)
+            else:
+                self.send_response(404)
+                self.end_headers()
+        
+        def log_message(self, format, *args):
+            pass  # Отключаем логи запросов
+    
+    port = int(os.environ.get('PORT', 8080))
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    logger.info(f"🌐 Веб-сервер запущен на порту {port}")
+    server.serve_forever()
+
 # === ОБРАБОТЧИК ВСЕХ СООБЩЕНИЙ ===
 @dp.message()
 async def handle_all_messages(message: Message):
@@ -417,6 +438,17 @@ async def main():
     logger.info(f"✅ Сообщений: {len(messages_data)}")
     logger.info(f"✅ Канал: {TARGET_CHAT_ID}")
     logger.info(f"✅ Подписчиков: {len(subscribers)}")
+    
+    # Запускаем простой веб-сервер в отдельном потоке
+    try:
+        web_thread = threading.Thread(target=run_simple_server, daemon=True)
+        web_thread.start()
+        logger.info("✅ Веб-сервер запущен в отдельном потоке")
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска веб-сервера: {e}")
+    
+    # Даем время серверу запуститься
+    await asyncio.sleep(2)
     
     # Запускаем планировщик
     asyncio.create_task(scheduled_broadcast())
