@@ -5,12 +5,11 @@ import logging
 import os
 import sys
 from datetime import datetime, timedelta
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
-from aiogram.filters import Command, Text
 
 # === КОНФИГУРАЦИЯ ===
 API_TOKEN = os.environ.get("API_TOKEN", "8491120802:AAHTQOxZhE41tDCrDg0yeOEBmrQA7PBy4Ms")
@@ -124,7 +123,7 @@ def add_to_history(chat_id: int, message_id: int):
 
 # === ГЛАВНОЕ МЕНЮ ===
 @dp.message(Command("start"))
-@dp.message(Text("🔙 Назад в меню"))
+@dp.message(F.text == "🔙 Назад в меню")
 async def show_main_menu(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -149,7 +148,7 @@ async def show_main_menu(message: Message):
     logger.info(f"Главное меню для {user_name} ({user_id})")
 
 # === СТАТУС БОТА ===
-@dp.message(Text("📊 Статус бота"))
+@dp.message(F.text == "📊 Статус бота")
 async def show_status(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -186,7 +185,7 @@ async def show_status(message: Message):
     add_to_history(chat_id, sent_message.message_id)
 
 # === ПОДПИСКА ===
-@dp.message(Text("🔔 Подписаться на ЛС"))
+@dp.message(F.text == "🔔 Подписаться на ЛС")
 async def subscribe_user(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -215,7 +214,7 @@ async def subscribe_user(message: Message):
     add_to_history(chat_id, sent_message.message_id)
 
 # === ОТПИСКА ===
-@dp.message(Text("🔕 Отписаться от ЛС"))
+@dp.message(F.text == "🔕 Отписаться от ЛС")
 async def unsubscribe_user(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -240,7 +239,7 @@ async def unsubscribe_user(message: Message):
     add_to_history(chat_id, sent_message.message_id)
 
 # === РАСПИСАНИЕ ===
-@dp.message(Text("⏰ Расписание"))
+@dp.message(F.text == "⏰ Расписание")
 async def show_schedule(message: Message):
     chat_id = message.chat.id
     
@@ -303,7 +302,7 @@ async def show_schedule(message: Message):
     add_to_history(chat_id, sent_message.message_id)
 
 # === О БОТЕ ===
-@dp.message(Text("ℹ️ О боте"))
+@dp.message(F.text == "ℹ️ О боте")
 async def show_about(message: Message):
     chat_id = message.chat.id
     
