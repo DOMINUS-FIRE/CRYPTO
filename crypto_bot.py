@@ -194,13 +194,13 @@ async def cmd_status(message: Message):
     
     await cleanup_messages(chat_id)
     
-    now = datetime.now()
+    now = datetime.utcnow()  # Используем UTC время
     next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
     time_left = next_hour - now
     
     status_text = f"""📊 <b>СТАТУС БОТА</b>
 
-🕐 Сейчас: {now.strftime('%H:%M:%S')} UTC
+🕐 Текущее время UTC: {now.strftime('%H:%M:%S')}
 ⏰ Следующая рассылка: через {time_left.seconds // 60} мин
 📅 Ближайшее время: {next_hour.strftime('%H:%M')} UTC
 
@@ -220,37 +220,39 @@ async def cmd_schedule(message: Message):
     
     await cleanup_messages(chat_id)
     
-    now = datetime.now()
-    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-    time_left = next_hour - now
+    now = datetime.utcnow()  # Используем UTC время
+    # Находим следующее время рассылки (следующий час в 00 минут)
+    next_broadcast = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    time_left = next_broadcast - now
     
+    # Генерируем расписание следующих 5 рассылок
     schedule_times = []
-    current = now.replace(minute=0, second=0, microsecond=0)
+    current = next_broadcast
     
-    for i in range(1, 6):
-        next_time = current + timedelta(hours=i)
-        schedule_times.append(next_time.strftime('%H:%M'))
+    for i in range(5):
+        schedule_times.append(current)
+        current = current + timedelta(hours=1)
     
     schedule_text = f"""⏰ <b>РАСПИСАНИЕ РАССЫЛКИ</b>
 
 <code>────────────────────</code>
 <b>Следующая отправка:</b>
-🕐 {next_hour.strftime('%H:%M')} UTC
+🕐 {next_broadcast.strftime('%H:%M')} UTC
 ⏳ Через {time_left.seconds // 60} минут {time_left.seconds % 60} секунд
 
 <code>────────────────────</code>
 <b>Ближайшие 5 рассылок:</b>
 """
     
-    for i, time_str in enumerate(schedule_times, 1):
-        schedule_text += f"• {time_str} UTC\n"
+    for i, time_obj in enumerate(schedule_times, 1):
+        schedule_text += f"• {time_obj.strftime('%H:%M')} UTC\n"
     
     schedule_text += f"""
 <code>────────────────────</code>
 <b>Статистика:</b>
 • Сообщений готово: {len(messages_data)}
 • Подписчиков: {len(subscribers)}
-• Время сервера: {datetime.now().strftime('%H:%M:%S')} UTC"""
+• Текущее время UTC: {now.strftime('%H:%M:%S')}"""
     
     sent_message = await message.answer(schedule_text)
     add_to_history(chat_id, sent_message.message_id)
@@ -323,11 +325,10 @@ async def send_hourly_message():
             return False
         
         msg = random.choice(messages_data)
-        current_time = datetime.now()
-        time_str = current_time.strftime('%H:%M')
+        # Убираем time_str - больше не показываем время в заголовке
         
         formatted_message = f"""
-🕐 <b>КРИПТО-СИГНАЛ {time_str}</b>
+🚀 <b>КРИПТО-СИГНАЛ</b>
 <code>────────────────────</code>
 
 {msg['text']}
@@ -335,7 +336,7 @@ async def send_hourly_message():
         
         # Отправляем в канал
         await bot.send_message(chat_id=TARGET_CHAT_ID, text=formatted_message)
-        logger.info(f"✅ Сообщение #{msg['id']} отправлено в канал {TARGET_CHAT_ID} в {time_str}")
+        logger.info(f"✅ Сообщение #{msg['id']} отправлено в канал {TARGET_CHAT_ID}")
         
         # Отправляем подписчикам
         if subscribers:

@@ -104,11 +104,10 @@ for i in range(1, 1001):
     
     message = random.choice(templates)
     
-    # Добавляем подпись
+    # Добавляем подпись БЕЗ ВРЕМЕНИ
     message += f"""
 
 <code>────────────────────</code>
-📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}
 ⚠️ Торгуйте ответственно. Риски есть всегда!
 #сигнал #покупка #{crypto.lower()} #крипто #биткоин"""
     
