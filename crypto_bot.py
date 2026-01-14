@@ -3,7 +3,7 @@ import json
 import random
 import logging
 import os
-import threading
+import sys
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -15,55 +15,60 @@ from aiogram.client.default import DefaultBotProperties
 API_TOKEN = os.environ.get("API_TOKEN", "8491120802:AAHTQOxZhE41tDCrDg0yeOEBmrQA7PBy4Ms")
 TARGET_CHAT_ID = os.environ.get("TARGET_CHAT_ID", "@crypto_rul_FAI")
 SUBSCRIBERS_FILE = "subscribers.json"
+PORT = int(os.environ.get("PORT", 10000))  # Render сам назначает порт
 
 # === ЛОГГИРОВАНИЕ ===
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('bot.log')
+    ]
 )
 logger = logging.getLogger(__name__)
 
 # Проверяем обязательные переменные
-if not API_TOKEN or API_TOKEN == "your_bot_token_here":
+if not API_TOKEN:
     logger.error("❌ API_TOKEN не установлен!")
     exit(1)
 
-logger.info(f"🚀 Бот запускается на Render.com")
+logger.info("=" * 60)
+logger.info("🚀 ЗАПУСК КРИПТО-БОТА НА RENDER.COM")
 logger.info(f"🔑 Токен: установлен")
 logger.info(f"📢 Канал: {TARGET_CHAT_ID}")
+logger.info(f"🌐 Порт для веб-сервера: {PORT}")
+logger.info("=" * 60)
 
-bot = Bot(
-    token=API_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-)
-dp = Dispatcher()
+# === ИНИЦИАЛИЗАЦИЯ БОТА ===
+try:
+    bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    dp = Dispatcher()
+    logger.info("✅ Бот инициализирован")
+except Exception as e:
+    logger.error(f"❌ Ошибка инициализации бота: {e}")
+    exit(1)
 
-# === ЗАГРУЗКА СООБЩЕНИЙ ===
+# === ЗАГРУЗКА ДАННЫХ ===
 def load_messages():
     try:
         with open('messages.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
+            logger.info(f"✅ Загружено {len(data['messages'])} сообщений")
             return data['messages']
-    except FileNotFoundError:
-        logger.error("Файл messages.json не найден!")
-        return []
     except Exception as e:
-        logger.error(f"Ошибка загрузки сообщений: {e}")
+        logger.error(f"❌ Ошибка загрузки messages.json: {e}")
         return []
 
-messages_data = load_messages()
-logger.info(f"Загружено {len(messages_data)} сообщений")
-
-# === УПРАВЛЕНИЕ ПОДПИСЧИКАМИ ===
 def load_subscribers():
     try:
         with open(SUBSCRIBERS_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            return set(data.get('subscribers', []))
-    except FileNotFoundError:
-        return set()
-    except Exception as e:
-        logger.error(f"Ошибка загрузки подписчиков: {e}")
+            subscribers = set(data.get('subscribers', []))
+            logger.info(f"✅ Загружено {len(subscribers)} подписчиков")
+            return subscribers
+    except Exception:
+        logger.info("ℹ️ Файл subscribers.json не найден, создаю новый")
         return set()
 
 def save_subscribers(subscribers):
@@ -71,10 +76,11 @@ def save_subscribers(subscribers):
         with open(SUBSCRIBERS_FILE, 'w', encoding='utf-8') as f:
             json.dump({'subscribers': list(subscribers)}, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        logger.error(f"Ошибка сохранения подписчиков: {e}")
+        logger.error(f"❌ Ошибка сохранения подписчиков: {e}")
 
+# Загружаем данные
+messages_data = load_messages()
 subscribers = load_subscribers()
-logger.info(f"Загружено {len(subscribers)} подписчиков")
 
 # === ХРАНЕНИЕ ID СООБЩЕНИЙ ===
 user_last_messages = {}
@@ -194,16 +200,16 @@ async def cmd_status(message: Message):
     
     status_text = f"""📊 <b>СТАТУС БОТА</b>
 
-🕐 Сейчас: {now.strftime('%H:%M:%S')}
+🕐 Сейчас: {now.strftime('%H:%M:%S')} UTC
 ⏰ Следующая рассылка: через {time_left.seconds // 60} мин
-📅 Ближайшее время: {next_hour.strftime('%H:%M')}
+📅 Ближайшее время: {next_hour.strftime('%H:%M')} UTC
 
 📨 Сообщений в базе: {len(messages_data)}
 👥 Подписчиков: {len(subscribers)}
 🔔 Ваша подписка: {'✅ АКТИВНА' if user_id in subscribers else '❌ НЕ АКТИВНА'}
 
 📍 Канал: @crypto_rul_FAI
-📢 Рассылка: каждый час в 00 минут"""
+📢 Рассылка: каждый час в 00 минут UTC"""
     
     sent_message = await message.answer(status_text)
     add_to_history(chat_id, sent_message.message_id)
@@ -229,7 +235,7 @@ async def cmd_schedule(message: Message):
 
 <code>────────────────────</code>
 <b>Следующая отправка:</b>
-🕐 {next_hour.strftime('%H:%M')}
+🕐 {next_hour.strftime('%H:%M')} UTC
 ⏳ Через {time_left.seconds // 60} минут {time_left.seconds % 60} секунд
 
 <code>────────────────────</code>
@@ -237,14 +243,14 @@ async def cmd_schedule(message: Message):
 """
     
     for i, time_str in enumerate(schedule_times, 1):
-        schedule_text += f"• {time_str}\n"
+        schedule_text += f"• {time_str} UTC\n"
     
     schedule_text += f"""
 <code>────────────────────</code>
 <b>Статистика:</b>
 • Сообщений готово: {len(messages_data)}
 • Подписчиков: {len(subscribers)}
-• Время сервера: {datetime.now().strftime('%H:%M:%S')}"""
+• Время сервера: {datetime.now().strftime('%H:%M:%S')} UTC"""
     
     sent_message = await message.answer(schedule_text)
     add_to_history(chat_id, sent_message.message_id)
@@ -256,10 +262,7 @@ async def send_to_subscribers(message_text: str):
     
     for user_id in list(subscribers):
         try:
-            await bot.send_message(
-                chat_id=user_id,
-                text=message_text
-            )
+            await bot.send_message(chat_id=user_id, text=message_text)
             sent_count += 1
             await asyncio.sleep(0.05)
         except Exception as e:
@@ -269,9 +272,9 @@ async def send_to_subscribers(message_text: str):
                 subscribers.discard(user_id)
     
     if sent_count > 0:
-        logger.info(f"Отправлено {sent_count} подписчикам")
+        logger.info(f"✅ Отправлено {sent_count} подписчикам")
     if failed_count > 0:
-        logger.warning(f"Не удалось {failed_count} подписчикам")
+        logger.warning(f"⚠️ Не удалось {failed_count} подписчикам")
     
     save_subscribers(subscribers)
 
@@ -280,10 +283,8 @@ async def scheduled_broadcast():
     """Рассылка каждый час в 00 минут"""
     logger.info("⏰ Запущен планировщик рассылки")
     
-    # Ждем полную инициализацию
-    await asyncio.sleep(5)
+    await asyncio.sleep(5)  # Ждем инициализацию
     
-    # Флаг для предотвращения двойной отправки при запуске в 00 минут
     first_run = True
     
     while True:
@@ -292,29 +293,21 @@ async def scheduled_broadcast():
             current_minute = now.minute
             current_second = now.second
             
-            # Если сейчас 00 минут - отправляем
             if current_minute == 0:
-                # Если это первый запуск и мы в 00 минут - пропускаем
                 if first_run:
                     logger.info(f"⚠️ Первый запуск в {now.strftime('%H:%M')}, пропускаю отправку")
                     first_run = False
-                    # Ждем до следующего часа
                     seconds_to_wait = (60 - current_second) + 1
                     await asyncio.sleep(seconds_to_wait)
                     continue
                 
                 logger.info(f"🕐 Время {now.strftime('%H:%M:%S')} - отправляю сообщение...")
                 await send_hourly_message()
-                
-                # Ждем 61 минуту чтобы не отправить дважды в 00 минут
-                await asyncio.sleep(3660)
+                await asyncio.sleep(3660)  # Ждем 61 минуту
             else:
                 first_run = False
-                # Вычисляем сколько секунд осталось до следующего часа
                 minutes_left = 60 - current_minute
                 seconds_left = minutes_left * 60 - current_second
-                
-                # Ждем до следующего часа
                 logger.info(f"⏳ До следующей рассылки: {minutes_left} мин {seconds_left % 60} сек")
                 await asyncio.sleep(seconds_left)
                 
@@ -329,34 +322,22 @@ async def send_hourly_message():
             logger.error("❌ Нет сообщений для отправки")
             return False
         
-        # Выбираем случайное сообщение
         msg = random.choice(messages_data)
-        text = msg['text']
-        
-        # Форматируем время
         current_time = datetime.now()
         time_str = current_time.strftime('%H:%M')
         
-        # Форматируем сообщение
         formatted_message = f"""
 🕐 <b>КРИПТО-СИГНАЛ {time_str}</b>
 <code>────────────────────</code>
 
-{text}
+{msg['text']}
         """
         
-        # 1. Отправляем в канал (ВСЕГДА)
-        try:
-            await bot.send_message(
-                chat_id=TARGET_CHAT_ID,
-                text=formatted_message
-            )
-            logger.info(f"✅ Сообщение #{msg['id']} отправлено в канал {TARGET_CHAT_ID} в {time_str}")
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки в канал: {e}")
-            return False
+        # Отправляем в канал
+        await bot.send_message(chat_id=TARGET_CHAT_ID, text=formatted_message)
+        logger.info(f"✅ Сообщение #{msg['id']} отправлено в канал {TARGET_CHAT_ID} в {time_str}")
         
-        # 2. Отправляем подписчикам в ЛС (только если есть подписчики)
+        # Отправляем подписчикам
         if subscribers:
             await send_to_subscribers(formatted_message)
             logger.info(f"✅ Сообщение отправлено {len(subscribers)} подписчикам")
@@ -369,38 +350,48 @@ async def send_hourly_message():
         logger.error(f"❌ Ошибка отправки: {e}")
         return False
 
-# === ПРОСТОЙ ВЕБ-СЕРВЕР ДЛЯ RENDER ===
-def run_simple_server():
-    """Запуск простого HTTP сервера для Render"""
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    
-    class SimpleHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            if self.path == '/':
-                self.send_response(200)
-                self.send_header('Content-type', 'text/html; charset=utf-8')
-                self.end_headers()
-                # Обычная строка, потом кодируем в байты
-                html_content = "<h1>Crypto Bot is running!</h1><p>Bot is active and working.</p>"
-                response = html_content.encode('utf-8')
-                self.wfile.write(response)
-            elif self.path in ['/health', '/healthz']:
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                response = b'{"status": "ok", "bot": "running"}'
-                self.wfile.write(response)
-            else:
-                self.send_response(404)
-                self.end_headers()
+# === ПРОСТОЙ ВЕБ-СЕРВЕР НА aiohttp ===
+async def start_web_server():
+    """Запуск веб-сервера для Render health check"""
+    try:
+        from aiohttp import web
         
-        def log_message(self, format, *args):
-            pass  # Отключаем логи запросов
-    
-    port = int(os.environ.get('PORT', 8080))
-    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
-    logger.info(f"🌐 Веб-сервер запущен на порту {port}")
-    server.serve_forever()
+        app = web.Application()
+        
+        async def handle_root(request):
+            return web.Response(text="🤖 Crypto Bot is running!\n\nStatus: OK\nTime: " + 
+                               datetime.now().strftime('%H:%M:%S'))
+        
+        async def handle_health(request):
+            return web.json_response({
+                "status": "ok",
+                "bot": "running",
+                "subscribers": len(subscribers),
+                "messages": len(messages_data),
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        app.router.add_get('/', handle_root)
+        app.router.add_get('/health', handle_health)
+        app.router.add_get('/healthz', handle_health)
+        
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', PORT)
+        await site.start()
+        
+        logger.info(f"🌐 Веб-сервер запущен на порту {PORT}")
+        logger.info(f"✅ Health check доступен по: /health")
+        
+        return runner
+        
+    except ImportError:
+        logger.warning("⚠️ aiohttp не установлен, веб-сервер не будет запущен")
+        logger.info("ℹ️ Добавьте 'aiohttp' в requirements.txt")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска веб-сервера: {e}")
+        return None
 
 # === ОБРАБОТЧИК ВСЕХ СООБЩЕНИЙ ===
 @dp.message()
@@ -419,47 +410,64 @@ async def handle_all_messages(message: Message):
 /schedule - Расписание
 
 📍 Канал: @crypto_rul_FAI
-⏰ Рассылка: каждый час в 00 минут"""
+⏰ Рассылка: каждый час в 00 минут UTC"""
         
         sent_message = await message.answer(response)
         add_to_history(chat_id, sent_message.message_id)
 
-# === ОСНОВНАЯ ФУНКЦИЯ ===
+# === ГЛАВНАЯ ФУНКЦИЯ ===
 async def main():
-    """Запуск бота"""
-    logger.info("=" * 50)
-    logger.info("🚀 ЗАПУСК КРИПТО-БОТА")
-    logger.info("=" * 50)
+    """Основная функция запуска"""
+    logger.info("=" * 60)
+    logger.info("🚀 ИНИЦИАЛИЗАЦИЯ СИСТЕМЫ...")
+    logger.info("=" * 60)
     
     if not messages_data:
         logger.error("❌ Нет сообщений! Запустите generate_messages.py")
         return
     
-    logger.info(f"✅ Сообщений: {len(messages_data)}")
-    logger.info(f"✅ Канал: {TARGET_CHAT_ID}")
-    logger.info(f"✅ Подписчиков: {len(subscribers)}")
+    # Запускаем веб-сервер
+    web_runner = await start_web_server()
     
-    # Запускаем простой веб-сервер в отдельном потоке
-    try:
-        web_thread = threading.Thread(target=run_simple_server, daemon=True)
-        web_thread.start()
-        logger.info("✅ Веб-сервер запущен в отдельном потоке")
-    except Exception as e:
-        logger.error(f"❌ Ошибка запуска веб-сервера: {e}")
-    
-    # Даем время серверу запуститься
-    await asyncio.sleep(2)
-    
-    # Запускаем планировщик
+    # Запускаем планировщик рассылки
     asyncio.create_task(scheduled_broadcast())
     
-    logger.info("✅ Бот запущен! Рассылка каждый час в 00 минут")
-    logger.info("✅ Проверьте канал: @crypto_rul_FAI")
-    logger.info("✅ Подпишитесь командой: /subscribe")
+    logger.info("=" * 60)
+    logger.info("✅ СИСТЕМА ЗАПУЩЕНА УСПЕШНО!")
+    logger.info(f"📊 Сообщений: {len(messages_data)}")
+    logger.info(f"👥 Подписчиков: {len(subscribers)}")
+    logger.info(f"📢 Канал: {TARGET_CHAT_ID}")
+    logger.info(f"🌐 Веб-сервер: порт {PORT}")
+    logger.info("⏰ Рассылка: каждый час в 00 минут UTC")
+    logger.info("=" * 60)
     
-    # Запускаем поллинг
-    await dp.start_polling(bot)
+    # Запускаем поллинг бота
+    try:
+        await dp.start_polling(bot)
+    except Exception as e:
+        logger.error(f"❌ Ошибка поллинга: {e}")
+    finally:
+        # Очистка при завершении
+        if web_runner:
+            await web_runner.cleanup()
+        logger.info("👋 Бот завершает работу")
 
 # === ТОЧКА ВХОДА ===
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Обработка сигналов для корректного завершения
+    import signal
+    
+    def signal_handler(signum, frame):
+        logger.info(f"📞 Получен сигнал {signum}, завершаем работу...")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    # Запуск
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("👋 Завершение по команде пользователя")
+    except Exception as e:
+        logger.error(f"❌ Неожиданная ошибка: {e}")

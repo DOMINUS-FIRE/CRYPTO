@@ -9,6 +9,6 @@ services:
     autoDeploy: true
     envVars:
       - key: API_TOKEN
-        sync: false
+        value: "8491120802:AAHTQOxZhE41tDCrDg0yeOEBmrQA7PBy4Ms"
       - key: TARGET_CHAT_ID
         value: "@crypto_rul_FAI"
