@@ -7,9 +7,10 @@ import sys
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.filters import Command, Text
 
 # === КОНФИГУРАЦИЯ ===
 API_TOKEN = os.environ.get("API_TOKEN", "8491120802:AAHTQOxZhE41tDCrDg0yeOEBmrQA7PBy4Ms")
@@ -85,27 +86,24 @@ subscribers = load_subscribers()
 # === ХРАНЕНИЕ ID СООБЩЕНИЙ ===
 user_last_messages = {}
 
-# === ПРИВЕТСТВЕННОЕ СООБЩЕНИЕ ===
-WELCOME_MESSAGE = """📌 <b>🚀 ПРИВЕТСТВИЕ ОТ КРИПТО-БОТА №1!</b>
+# === КЛАВИАТУРЫ ===
+def get_main_keyboard():
+    """Клавиатура главного меню"""
+    keyboard = [
+        [KeyboardButton(text="📊 Статус бота")],
+        [KeyboardButton(text="🔔 Подписаться на ЛС")],
+        [KeyboardButton(text="🔕 Отписаться от ЛС")],
+        [KeyboardButton(text="⏰ Расписание")],
+        [KeyboardButton(text="ℹ️ О боте")]
+    ]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
-💰 <b>Мы - лидеры в анализе крипторынка!</b>
-
-⏰ <b>Расписание рассылки:</b>
-• Каждый час в 00 минут
-• Пример: 22:00, 23:00, 00:00 и т.д.
-• 📍 В канал: <b>@crypto_rul_FAI</b>
-• 📨 В ЛС: только для подписчиков
-
-🔔 <b>Команды:</b>
-/start - Это сообщение
-/subscribe - Подписаться на ЛС 🔔
-/unsubscribe - Отписаться от ЛС 🔕
-/status - Статус бота
-/schedule - Расписание рассылки
-
-<code>────────────────────</code>
-<i>📌 Это сообщение закреплено</i>
-<i>Сигналы идут каждый час точно по времени!</i>"""
+def get_back_keyboard():
+    """Клавиатура с кнопкой Назад"""
+    keyboard = [
+        [KeyboardButton(text="🔙 Назад в меню")]
+    ]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 # === ОЧИСТКА СООБЩЕНИЙ ===
 async def cleanup_messages(chat_id: int):
@@ -124,24 +122,72 @@ def add_to_history(chat_id: int, message_id: int):
     if len(user_last_messages[chat_id]) > 5:
         user_last_messages[chat_id] = user_last_messages[chat_id][-5:]
 
-# === КОМАНДЫ БОТА ===
+# === ГЛАВНОЕ МЕНЮ ===
 @dp.message(Command("start"))
-async def cmd_start(message: Message):
+@dp.message(Text("🔙 Назад в меню"))
+async def show_main_menu(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     user_name = message.from_user.full_name
     
     await cleanup_messages(chat_id)
     
-    welcome = WELCOME_MESSAGE.replace("ПРИВЕТСТВИЕ ОТ", f"Привет, {user_name}!")
+    welcome_text = f"""🤖 <b>Привет, {user_name}!</b>
+
+<b>🚀 КРИПТО-БОТ №1</b> - лидер в анализе крипторынка!
+
+<b>⏰ Рассылка сигналов:</b>
+• Каждый час в 00 минут
+• 📍 В канал: <b>@crypto_rul_FAI</b>
+• 📨 В ЛС: только для подписчиков
+
+<b>📌 Выберите действие:</b>"""
     
-    sent_message = await message.answer(welcome)
+    sent_message = await message.answer(welcome_text, reply_markup=get_main_keyboard())
     add_to_history(chat_id, sent_message.message_id)
     
-    logger.info(f"Приветствие для {user_name} ({user_id})")
+    logger.info(f"Главное меню для {user_name} ({user_id})")
 
-@dp.message(Command("subscribe"))
-async def cmd_subscribe(message: Message):
+# === СТАТУС БОТА ===
+@dp.message(Text("📊 Статус бота"))
+async def show_status(message: Message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    
+    await cleanup_messages(chat_id)
+    
+    now = datetime.now()
+    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    time_left = next_hour - now
+    
+    # Рассчитываем минуты и секунды до следующего сигнала
+    total_seconds = time_left.seconds
+    minutes_left = total_seconds // 60
+    seconds_left = total_seconds % 60
+    
+    # Проверяем, если до следующего сигнала меньше минуты
+    if minutes_left == 0 and seconds_left < 60:
+        next_time_text = "СЕЙЧАС"
+    else:
+        next_time_text = f"через {minutes_left} мин {seconds_left} сек"
+    
+    status_text = f"""📊 <b>СТАТУС БОТА</b>
+
+⏰ Следующая рассылка: <b>{next_time_text}</b>
+
+📨 Сообщений в базе: <b>{len(messages_data)}</b>
+👥 Подписчиков: <b>{len(subscribers)}</b>
+🔔 Ваша подписка: <b>{'✅ АКТИВНА' if user_id in subscribers else '❌ НЕ АКТИВНА'}</b>
+
+📍 Канал: @crypto_rul_FAI
+📢 Рассылка: каждый час в 00 минут"""
+    
+    sent_message = await message.answer(status_text, reply_markup=get_back_keyboard())
+    add_to_history(chat_id, sent_message.message_id)
+
+# === ПОДПИСКА ===
+@dp.message(Text("🔔 Подписаться на ЛС"))
+async def subscribe_user(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     user_name = message.from_user.full_name
@@ -165,11 +211,12 @@ async def cmd_subscribe(message: Message):
 📅 Следующая рассылка: в 00 минут следующего часа!"""
         logger.info(f"Новый подписчик: {user_name} ({user_id})")
     
-    sent_message = await message.answer(response)
+    sent_message = await message.answer(response, reply_markup=get_back_keyboard())
     add_to_history(chat_id, sent_message.message_id)
 
-@dp.message(Command("unsubscribe"))
-async def cmd_unsubscribe(message: Message):
+# === ОТПИСКА ===
+@dp.message(Text("🔕 Отписаться от ЛС"))
+async def unsubscribe_user(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     user_name = message.from_user.full_name
@@ -179,52 +226,22 @@ async def cmd_unsubscribe(message: Message):
     if user_id in subscribers:
         subscribers.discard(user_id)
         save_subscribers(subscribers)
-        response = f"🔕 {user_name}, вы отписались от рассылки в ЛС."
+        response = f"""🔕 <b>{user_name}, вы отписались от рассылки в ЛС.</b>
+
+Вы больше не будете получать крипто-сигналы в личные сообщения.
+Сигналы в канале @crypto_rul_FAI продолжают идти каждый час."""
         logger.info(f"Отписался: {user_name} ({user_id})")
     else:
-        response = "ℹ️ Вы не подписаны на рассылку."
+        response = """ℹ️ <b>Вы не подписаны на рассылку.</b>
+
+Чтобы подписаться, нажмите кнопку "🔔 Подписаться на ЛС"."""
     
-    sent_message = await message.answer(response)
+    sent_message = await message.answer(response, reply_markup=get_back_keyboard())
     add_to_history(chat_id, sent_message.message_id)
 
-@dp.message(Command("status"))
-async def cmd_status(message: Message):
-    chat_id = message.chat.id
-    user_id = message.from_user.id
-    
-    await cleanup_messages(chat_id)
-    
-    now = datetime.now()
-    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-    time_left = next_hour - now
-    
-    # Рассчитываем минуты и секунды до следующего сигнала
-    total_seconds = time_left.seconds
-    minutes_left = total_seconds // 60
-    seconds_left = total_seconds % 60
-    
-    # Проверяем, если до следующего сигнала меньше минуты (например, прямо сейчас)
-    if minutes_left == 0 and seconds_left < 60:
-        next_time_text = "СЕЙЧАС"
-    else:
-        next_time_text = f"через {minutes_left} мин {seconds_left} сек"
-    
-    status_text = f"""📊 <b>СТАТУС БОТА</b>
-
-⏰ Следующая рассылка: {next_time_text}
-
-📨 Сообщений в базе: {len(messages_data)}
-👥 Подписчиков: {len(subscribers)}
-🔔 Ваша подписка: {'✅ АКТИВНА' if user_id in subscribers else '❌ НЕ АКТИВНА'}
-
-📍 Канал: @crypto_rul_FAI
-📢 Рассылка: каждый час в 00 минут"""
-    
-    sent_message = await message.answer(status_text)
-    add_to_history(chat_id, sent_message.message_id)
-
-@dp.message(Command("schedule"))
-async def cmd_schedule(message: Message):
+# === РАСПИСАНИЕ ===
+@dp.message(Text("⏰ Расписание"))
+async def show_schedule(message: Message):
     chat_id = message.chat.id
     
     await cleanup_messages(chat_id)
@@ -278,11 +295,46 @@ async def cmd_schedule(message: Message):
     schedule_text += f"""
 <code>────────────────────</code>
 <b>Статистика:</b>
-• Сообщений готово: {len(messages_data)}
-• Подписчиков: {len(subscribers)}
-• Частота: каждый час в 00 минут"""
+• Сообщений готово: <b>{len(messages_data)}</b>
+• Подписчиков: <b>{len(subscribers)}</b>
+• Частота: <b>каждый час в 00 минут</b>"""
     
-    sent_message = await message.answer(schedule_text)
+    sent_message = await message.answer(schedule_text, reply_markup=get_back_keyboard())
+    add_to_history(chat_id, sent_message.message_id)
+
+# === О БОТЕ ===
+@dp.message(Text("ℹ️ О боте"))
+async def show_about(message: Message):
+    chat_id = message.chat.id
+    
+    await cleanup_messages(chat_id)
+    
+    about_text = """🤖 <b>О КРИПТО-БОТЕ</b>
+
+<b>🚀 Наша миссия:</b>
+Предоставлять качественные крипто-сигналы
+каждый час точно по времени!
+
+<b>📊 Что мы делаем:</b>
+• Анализируем рынок 24/7
+• Ищем лучшие точки входа
+• Даем четкие рекомендации
+• Отправляем сигналы каждый час
+
+<b>⏰ Расписание:</b>
+• Сигналы: каждый час в 00 минут
+• Канал: @crypto_rul_FAI
+• ЛС: для подписчиков
+
+<b>📌 Как пользоваться:</b>
+1. Подпишитесь на канал @crypto_rul_FAI
+2. Нажмите "🔔 Подписаться на ЛС"
+3. Получайте сигналы каждый час!
+
+<code>────────────────────</code>
+⚠️ <i>Торгуйте ответственно. Риски есть всегда!</i>"""
+    
+    sent_message = await message.answer(about_text, reply_markup=get_back_keyboard())
     add_to_history(chat_id, sent_message.message_id)
 
 # === ОТПРАВКА СООБЩЕНИЙ ПОДПИСЧИКАМ ===
@@ -426,22 +478,23 @@ async def start_web_server():
 async def handle_all_messages(message: Message):
     chat_id = message.chat.id
     
+    # Если сообщение не команда и не текст кнопок
     if message.text and not message.text.startswith('/'):
-        await cleanup_messages(chat_id)
+        # Проверяем, не является ли это кнопкой
+        buttons_texts = [
+            "📊 Статус бота", "🔔 Подписаться на ЛС", "🔕 Отписаться от ЛС",
+            "⏰ Расписание", "ℹ️ О боте", "🔙 Назад в меню"
+        ]
         
-        response = """🤖 <b>Я крипто-бот!</b>
+        if message.text not in buttons_texts:
+            await cleanup_messages(chat_id)
+            
+            response = """🤖 <b>Используйте кнопки меню!</b>
 
-Используйте команды:
-/start - Приветствие
-/subscribe - Подписаться на ЛС
-/status - Статус бота
-/schedule - Расписание
-
-📍 Канал: @crypto_rul_FAI
-⏰ Рассылка: каждый час в 00 минут"""
-        
-        sent_message = await message.answer(response)
-        add_to_history(chat_id, sent_message.message_id)
+Выберите действие из меню ниже:"""
+            
+            sent_message = await message.answer(response, reply_markup=get_main_keyboard())
+            add_to_history(chat_id, sent_message.message_id)
 
 # === ГЛАВНАЯ ФУНКЦИЯ ===
 async def main():
