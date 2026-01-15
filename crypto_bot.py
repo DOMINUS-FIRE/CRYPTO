@@ -82,8 +82,9 @@ def save_subscribers(subscribers):
 messages_data = load_messages()
 subscribers = load_subscribers()
 
-# === ХРАНЕНИЕ ID СООБЩЕНИЙ ===
+# === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
 user_last_messages = {}
+last_broadcast_hour = None  # Для предотвращения дублирования
 
 # === КЛАВИАТУРЫ ===
 def get_main_keyboard():
@@ -345,12 +346,13 @@ async def send_to_subscribers(message_text: str):
         try:
             await bot.send_message(chat_id=user_id, text=message_text)
             sent_count += 1
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.1)  # Задержка между отправками
         except Exception as e:
             logger.error(f"Ошибка подписчику {user_id}: {e}")
             failed_count += 1
-            if "bot was blocked" in str(e).lower():
+            if "bot was blocked" in str(e).lower() or "Forbidden" in str(e):
                 subscribers.discard(user_id)
+                logger.info(f"Удален подписчик {user_id} (заблокировал бота)")
     
     if sent_count > 0:
         logger.info(f"✅ Отправлено {sent_count} подписчикам")
@@ -361,36 +363,48 @@ async def send_to_subscribers(message_text: str):
 
 # === РАССЫЛКА ПО РАСПИСАНИЮ ===
 async def scheduled_broadcast():
-    """Рассылка каждый час в 00 минут"""
+    """Рассылка каждый час в 00 минут с защитой от дублирования"""
     logger.info("⏰ Запущен планировщик рассылки")
     
-    await asyncio.sleep(5)  # Ждем инициализацию
-    
-    first_run = True
+    await asyncio.sleep(10)  # Даем время на инициализацию
     
     while True:
         try:
             now = datetime.now()
+            current_hour = now.hour
             current_minute = now.minute
             current_second = now.second
             
+            # Если текущая минута 00 и еще не отправляли в этот час
             if current_minute == 0:
-                if first_run:
-                    logger.info(f"⚠️ Первый запуск в {now.strftime('%H:%M')}, пропускаю отправку")
-                    first_run = False
-                    seconds_to_wait = (60 - current_second) + 1
-                    await asyncio.sleep(seconds_to_wait)
-                    continue
+                global last_broadcast_hour
                 
-                logger.info(f"🕐 Время {now.strftime('%H:%M:%S')} - отправляю сообщение...")
-                await send_hourly_message()
-                await asyncio.sleep(3660)  # Ждем 61 минуту
+                # Проверяем, не отправляли ли уже в этот час
+                if last_broadcast_hour != current_hour:
+                    logger.info(f"🕐 Время {now.strftime('%H:%M:%S')} - отправляю сообщение...")
+                    
+                    # Отправляем сообщение
+                    success = await send_hourly_message()
+                    
+                    if success:
+                        # Обновляем время последней рассылки
+                        last_broadcast_hour = current_hour
+                        logger.info(f"✅ Рассылка успешна, следующая в {current_hour + 1}:00")
+                    
+                    # Ждем 61 минуту, чтобы не отправить дважды в одну минуту
+                    await asyncio.sleep(3660)  # 61 минута = 3660 секунд
+                else:
+                    logger.info(f"⏭️ Рассылка в {current_hour}:00 уже была, пропускаю")
+                    await asyncio.sleep(60)  # Ждем минуту и проверяем снова
             else:
-                first_run = False
+                # Если не время рассылки, считаем до следующего часа
                 minutes_left = 60 - current_minute
-                seconds_left = minutes_left * 60 - current_second
-                logger.info(f"⏳ До следующей рассылки: {minutes_left} мин {seconds_left % 60} сек")
-                await asyncio.sleep(seconds_left)
+                seconds_left = (minutes_left * 60) - current_second
+                
+                if minutes_left > 0:
+                    logger.info(f"⏳ До следующей рассылки: {minutes_left} мин {seconds_left % 60} сек")
+                
+                await asyncio.sleep(min(seconds_left, 60))  # Проверяем не чаще чем раз в минуту
                 
         except Exception as e:
             logger.error(f"❌ Ошибка в планировщике: {e}")
@@ -506,6 +520,13 @@ async def main():
         logger.error("❌ Нет сообщений! Запустите generate_messages.py")
         return
     
+    # Закрываем предыдущие сессии бота
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        logger.info("✅ Закрыты предыдущие сессии бота")
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось закрыть предыдущие сессии: {e}")
+    
     # Запускаем веб-сервер
     web_runner = await start_web_server()
     
@@ -520,21 +541,9 @@ async def main():
     logger.info(f"🌐 Веб-сервер: порт {PORT}")
     logger.info("⏰ Рассылка: каждый час в 00 минут")
     logger.info("=" * 60)
-    async def main():
-        """Основная функция запуска"""
-        # ... весь существующий код ...
-        
-        # Закрываем все предыдущие сессии
-        try:
-            await bot.delete_webhook(drop_pending_updates=True)
-            logger.info("✅ Удален вебхук и очищены обновления")
-        except Exception as e:
-            logger.error(f"❌ Ошибка удаления вебхука: {e}")
-        
-        # ... остальной код ...
+    
     # Запускаем поллинг бота
     try:
-        
         await dp.start_polling(bot)
     except Exception as e:
         logger.error(f"❌ Ошибка поллинга: {e}")
