@@ -87,23 +87,29 @@ user_last_messages = {}
 last_broadcast_hour = None  # Для предотвращения дублирования
 
 # === КЛАВИАТУРЫ ===
-def get_main_keyboard():
-    """Клавиатура главного меню"""
+def get_main_keyboard(user_id=None):
+    """Клавиатура главного меню с умной кнопкой подписки"""
+    # Определяем текст кнопки подписки
+    subscribe_text = "🔕 Отписаться от ЛС" if user_id and user_id in subscribers else "🔔 Подписаться на ЛС"
+    
     keyboard = [
         [KeyboardButton(text="📊 Статус бота")],
-        [KeyboardButton(text="🔔 Подписаться на ЛС")],
-        [KeyboardButton(text="🔕 Отписаться от ЛС")],
+        [KeyboardButton(text=subscribe_text)],  # Умная кнопка
         [KeyboardButton(text="⏰ Расписание")],
         [KeyboardButton(text="ℹ️ О боте")]
     ]
-    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, selective=True)
 
-def get_back_keyboard():
-    """Клавиатура с кнопкой Назад"""
+def get_back_keyboard(user_id=None):
+    """Клавиатура с кнопкой Назад и умной кнопкой подписки"""
+    # Определяем текст кнопки подписки
+    subscribe_text = "🔕 Отписаться от ЛС" if user_id and user_id in subscribers else "🔔 Подписаться на ЛС"
+    
     keyboard = [
+        [KeyboardButton(text=subscribe_text)],  # Умная кнопка
         [KeyboardButton(text="🔙 Назад в меню")]
     ]
-    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, selective=True)
 
 # === ОЧИСТКА СООБЩЕНИЙ ===
 async def cleanup_messages(chat_id: int):
@@ -143,10 +149,55 @@ async def show_main_menu(message: Message):
 
 <b>📌 Выберите действие:</b>"""
     
-    sent_message = await message.answer(welcome_text, reply_markup=get_main_keyboard())
+    sent_message = await message.answer(welcome_text, reply_markup=get_main_keyboard(user_id))
     add_to_history(chat_id, sent_message.message_id)
     
     logger.info(f"Главное меню для {user_name} ({user_id})")
+
+# === УМНАЯ КНОПКА ПОДПИСКИ/ОТПИСКИ ===
+@dp.message(F.text.in_(["🔔 Подписаться на ЛС", "🔕 Отписаться от ЛС"]))
+async def handle_subscription(message: Message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    user_name = message.from_user.full_name
+    action = message.text
+    
+    await cleanup_messages(chat_id)
+    
+    if action == "🔔 Подписаться на ЛС":
+        if user_id in subscribers:
+            response = """✅ <b>Вы уже подписаны на рассылку в ЛС!</b>
+
+Вы уже получаете крипто-сигналы в личные сообщения.
+📅 Следующая рассылка: в 00 минут следующего часа."""
+        else:
+            subscribers.add(user_id)
+            save_subscribers(subscribers)
+            response = f"""✅ <b>{user_name}, вы подписались!</b>
+
+🔔 Теперь вы будете получать крипто-сигналы:
+• В канал: @crypto_rul_FAI (всегда)
+• В ЛС: каждый час в 00 минут
+
+📅 Следующая рассылка: в 00 минут следующего часа!"""
+            logger.info(f"Новый подписчик: {user_name} ({user_id})")
+    
+    else:  # "🔕 Отписаться от ЛС"
+        if user_id in subscribers:
+            subscribers.discard(user_id)
+            save_subscribers(subscribers)
+            response = f"""🔕 <b>{user_name}, вы отписались от рассылки в ЛС.</b>
+
+Вы больше не будете получать крипто-сигналы в личные сообщения.
+Сигналы в канале @crypto_rul_FAI продолжают идти каждый час."""
+            logger.info(f"Отписался: {user_name} ({user_id})")
+        else:
+            response = """ℹ️ <b>Вы не подписаны на рассылку.</b>
+
+Чтобы подписаться, нажмите кнопку "🔔 Подписаться на ЛС"."""
+    
+    sent_message = await message.answer(response, reply_markup=get_back_keyboard(user_id))
+    add_to_history(chat_id, sent_message.message_id)
 
 # === СТАТУС БОТА ===
 @dp.message(F.text == "📊 Статус бота")
@@ -182,67 +233,14 @@ async def show_status(message: Message):
 📍 Канал: @crypto_rul_FAI
 📢 Рассылка: каждый час в 00 минут"""
     
-    sent_message = await message.answer(status_text, reply_markup=get_back_keyboard())
-    add_to_history(chat_id, sent_message.message_id)
-
-# === ПОДПИСКА ===
-@dp.message(F.text == "🔔 Подписаться на ЛС")
-async def subscribe_user(message: Message):
-    chat_id = message.chat.id
-    user_id = message.from_user.id
-    user_name = message.from_user.full_name
-    
-    await cleanup_messages(chat_id)
-    
-    if user_id in subscribers:
-        response = """✅ <b>Вы уже подписаны на рассылку в ЛС!</b>
-
-Вы уже получаете крипто-сигналы в личные сообщения.
-📅 Следующая рассылка: в 00 минут следующего часа."""
-    else:
-        subscribers.add(user_id)
-        save_subscribers(subscribers)
-        response = f"""✅ <b>{user_name}, вы подписались!</b>
-
-🔔 Теперь вы будете получать крипто-сигналы:
-• В канал: @crypto_rul_FAI (всегда)
-• В ЛС: каждый час в 00 минут
-
-📅 Следующая рассылка: в 00 минут следующего часа!"""
-        logger.info(f"Новый подписчик: {user_name} ({user_id})")
-    
-    sent_message = await message.answer(response, reply_markup=get_back_keyboard())
-    add_to_history(chat_id, sent_message.message_id)
-
-# === ОТПИСКА ===
-@dp.message(F.text == "🔕 Отписаться от ЛС")
-async def unsubscribe_user(message: Message):
-    chat_id = message.chat.id
-    user_id = message.from_user.id
-    user_name = message.from_user.full_name
-    
-    await cleanup_messages(chat_id)
-    
-    if user_id in subscribers:
-        subscribers.discard(user_id)
-        save_subscribers(subscribers)
-        response = f"""🔕 <b>{user_name}, вы отписались от рассылки в ЛС.</b>
-
-Вы больше не будете получать крипто-сигналы в личные сообщения.
-Сигналы в канале @crypto_rul_FAI продолжают идти каждый час."""
-        logger.info(f"Отписался: {user_name} ({user_id})")
-    else:
-        response = """ℹ️ <b>Вы не подписаны на рассылку.</b>
-
-Чтобы подписаться, нажмите кнопку "🔔 Подписаться на ЛС"."""
-    
-    sent_message = await message.answer(response, reply_markup=get_back_keyboard())
+    sent_message = await message.answer(status_text, reply_markup=get_back_keyboard(user_id))
     add_to_history(chat_id, sent_message.message_id)
 
 # === РАСПИСАНИЕ ===
 @dp.message(F.text == "⏰ Расписание")
 async def show_schedule(message: Message):
     chat_id = message.chat.id
+    user_id = message.from_user.id
     
     await cleanup_messages(chat_id)
     
@@ -299,13 +297,14 @@ async def show_schedule(message: Message):
 • Подписчиков: <b>{len(subscribers)}</b>
 • Частота: <b>каждый час в 00 минут</b>"""
     
-    sent_message = await message.answer(schedule_text, reply_markup=get_back_keyboard())
+    sent_message = await message.answer(schedule_text, reply_markup=get_back_keyboard(user_id))
     add_to_history(chat_id, sent_message.message_id)
 
 # === О БОТЕ ===
 @dp.message(F.text == "ℹ️ О боте")
 async def show_about(message: Message):
     chat_id = message.chat.id
+    user_id = message.from_user.id
     
     await cleanup_messages(chat_id)
     
@@ -334,7 +333,7 @@ async def show_about(message: Message):
 <code>────────────────────</code>
 ⚠️ <i>Торгуйте ответственно. Риски есть всегда!</i>"""
     
-    sent_message = await message.answer(about_text, reply_markup=get_back_keyboard())
+    sent_message = await message.answer(about_text, reply_markup=get_back_keyboard(user_id))
     add_to_history(chat_id, sent_message.message_id)
 
 # === ОТПРАВКА СООБЩЕНИЙ ПОДПИСЧИКАМ ===
@@ -490,6 +489,7 @@ async def start_web_server():
 @dp.message()
 async def handle_all_messages(message: Message):
     chat_id = message.chat.id
+    user_id = message.from_user.id
     
     # Если сообщение не команда и не текст кнопок
     if message.text and not message.text.startswith('/'):
@@ -506,7 +506,7 @@ async def handle_all_messages(message: Message):
 
 Выберите действие из меню ниже:"""
             
-            sent_message = await message.answer(response, reply_markup=get_main_keyboard())
+            sent_message = await message.answer(response, reply_markup=get_main_keyboard(user_id))
             add_to_history(chat_id, sent_message.message_id)
 
 # === ГЛАВНАЯ ФУНКЦИЯ ===
