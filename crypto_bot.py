@@ -342,7 +342,9 @@ async def show_about(message: Message):
 3. Получайте сигналы каждый час!
 
 <code>────────────────────</code>
-⚠️ <i>Торгуйте ответственно. Риски есть всегда!</i>"""
+⚠️ <i>Торгуйте ответственно. Риски есть всегда!
+    Created by DOMINUS FAI</i>"""
+
     
     sent_message = await message.answer(about_text, reply_markup=get_back_keyboard())
     add_to_history(chat_id, sent_message.message_id)
