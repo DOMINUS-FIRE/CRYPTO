@@ -12,7 +12,7 @@ from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 
 # === КОНФИГУРАЦИЯ ===
-API_TOKEN = os.environ.get("API_TOKEN", "8491120802:AAHTQOxZhE41tDCrDg0yeOEBmrQA7PBy4Ms")
+API_TOKEN = os.environ.get("API_TOKEN", "8291889965:AAE5TokfiS8-4JB7_88EQc9wgjjfJGrBc9I")
 TARGET_CHAT_ID = os.environ.get("TARGET_CHAT_ID", "@crypto_rul_FAI")
 SUBSCRIBERS_FILE = "subscribers.json"
 PORT = int(os.environ.get("PORT", 10000))  # Render сам назначает порт

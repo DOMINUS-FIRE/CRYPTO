@@ -6,3 +6,17 @@
 2026-01-15 03:47:49,090 - __main__ - INFO - ============================================================
 2026-01-15 03:47:49,091 - aiogram.dispatcher - INFO - Start polling
 2026-01-15 03:47:49,149 - aiogram.dispatcher - INFO - Run polling for bot @history_lash_bot id=8491120802 - 'CRYPTO MANIA'
+2026-01-15 03:49:19,698 - __main__ - INFO - ============================================================
+2026-01-15 03:49:19,702 - __main__ - INFO - ============================================================
+2026-01-15 03:49:19,725 - __main__ - INFO - ============================================================
+2026-01-15 03:49:19,738 - __main__ - INFO - ============================================================
+2026-01-15 03:49:20,042 - __main__ - INFO - ============================================================
+2026-01-15 03:49:20,051 - __main__ - INFO - ============================================================
+2026-01-15 03:49:20,051 - aiogram.dispatcher - INFO - Start polling
+2026-01-15 03:49:20,107 - aiogram.dispatcher - INFO - Run polling for bot @history_lash_bot id=8491120802 - 'CRYPTO MANIA'
+2026-01-15 03:49:24,252 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramConflictError: Telegram server says - Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+2026-01-15 03:49:24,253 - aiogram.dispatcher - WARNING - Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8491120802)
+2026-01-15 03:49:25,309 - aiogram.dispatcher - INFO - Connection established (tryings = 1, bot id = 8491120802)
+2026-01-15 03:49:25,775 - aiogram.event - INFO - Update id=43744313 is handled. Duration 468 ms by bot id=8491120802
+2026-01-15 03:49:29,451 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramConflictError: Telegram server says - Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+2026-01-15 03:49:29,451 - aiogram.dispatcher - WARNING - Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8491120802)
