@@ -100,33 +100,39 @@ def get_main_keyboard(user_id=None):
     ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, selective=True)
 
-def get_back_keyboard(user_id=None):
-    """Клавиатура с кнопкой Назад и умной кнопкой подписки"""
-    # Определяем текст кнопки подписки
-    subscribe_text = "🔕 Отписаться от ЛС" if user_id and user_id in subscribers else "🔔 Подписаться на ЛС"
-    
+def get_back_keyboard():
+    """Простая клавиатура с кнопкой Назад"""
     keyboard = [
-        [KeyboardButton(text=subscribe_text)],  # Умная кнопка
         [KeyboardButton(text="🔙 Назад в меню")]
     ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, selective=True)
 
 # === ОЧИСТКА СООБЩЕНИЙ ===
 async def cleanup_messages(chat_id: int):
+    """Удаляем только старые сообщения бота, сохраняя текущее меню"""
     if chat_id in user_last_messages:
         for msg_id in user_last_messages[chat_id]:
             try:
+                # Проверяем, что сообщение не слишком старое (больше 2 минут)
                 await bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            except:
-                pass
+            except Exception as e:
+                # Игнорируем ошибки "сообщение не найдено" или "уже удалено"
+                if "message to delete not found" not in str(e).lower() and "message can't be deleted" not in str(e).lower():
+                    logger.debug(f"Не удалось удалить сообщение {msg_id}: {e}")
         user_last_messages[chat_id] = []
 
 def add_to_history(chat_id: int, message_id: int):
+    """Добавляем сообщение в историю, храним только последние 3"""
     if chat_id not in user_last_messages:
         user_last_messages[chat_id] = []
     user_last_messages[chat_id].append(message_id)
-    if len(user_last_messages[chat_id]) > 5:
-        user_last_messages[chat_id] = user_last_messages[chat_id][-5:]
+    # Храним только последние 3 сообщения
+    if len(user_last_messages[chat_id]) > 3:
+        old_msg_id = user_last_messages[chat_id].pop(0)
+        try:
+            asyncio.create_task(bot.delete_message(chat_id=chat_id, message_id=old_msg_id))
+        except:
+            pass
 
 # === ГЛАВНОЕ МЕНЮ ===
 @dp.message(Command("start"))
@@ -136,6 +142,7 @@ async def show_main_menu(message: Message):
     user_id = message.from_user.id
     user_name = message.from_user.full_name
     
+    # Очищаем старые сообщения, но сохраняем текущее меню
     await cleanup_messages(chat_id)
     
     welcome_text = f"""🤖 <b>Привет, {user_name}!</b>
@@ -162,6 +169,7 @@ async def handle_subscription(message: Message):
     user_name = message.from_user.full_name
     action = message.text
     
+    # Очищаем старые сообщения
     await cleanup_messages(chat_id)
     
     if action == "🔔 Подписаться на ЛС":
@@ -196,7 +204,7 @@ async def handle_subscription(message: Message):
 
 Чтобы подписаться, нажмите кнопку "🔔 Подписаться на ЛС"."""
     
-    sent_message = await message.answer(response, reply_markup=get_back_keyboard(user_id))
+    sent_message = await message.answer(response, reply_markup=get_back_keyboard())
     add_to_history(chat_id, sent_message.message_id)
 
 # === СТАТУС БОТА ===
@@ -205,6 +213,7 @@ async def show_status(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     
+    # Очищаем старые сообщения
     await cleanup_messages(chat_id)
     
     now = datetime.now()
@@ -233,7 +242,7 @@ async def show_status(message: Message):
 📍 Канал: @crypto_rul_FAI
 📢 Рассылка: каждый час в 00 минут"""
     
-    sent_message = await message.answer(status_text, reply_markup=get_back_keyboard(user_id))
+    sent_message = await message.answer(status_text, reply_markup=get_back_keyboard())
     add_to_history(chat_id, sent_message.message_id)
 
 # === РАСПИСАНИЕ ===
@@ -242,6 +251,7 @@ async def show_schedule(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     
+    # Очищаем старые сообщения
     await cleanup_messages(chat_id)
     
     now = datetime.now()
@@ -297,7 +307,7 @@ async def show_schedule(message: Message):
 • Подписчиков: <b>{len(subscribers)}</b>
 • Частота: <b>каждый час в 00 минут</b>"""
     
-    sent_message = await message.answer(schedule_text, reply_markup=get_back_keyboard(user_id))
+    sent_message = await message.answer(schedule_text, reply_markup=get_back_keyboard())
     add_to_history(chat_id, sent_message.message_id)
 
 # === О БОТЕ ===
@@ -306,6 +316,7 @@ async def show_about(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     
+    # Очищаем старые сообщения
     await cleanup_messages(chat_id)
     
     about_text = """🤖 <b>О КРИПТО-БОТЕ</b>
@@ -333,7 +344,7 @@ async def show_about(message: Message):
 <code>────────────────────</code>
 ⚠️ <i>Торгуйте ответственно. Риски есть всегда!</i>"""
     
-    sent_message = await message.answer(about_text, reply_markup=get_back_keyboard(user_id))
+    sent_message = await message.answer(about_text, reply_markup=get_back_keyboard())
     add_to_history(chat_id, sent_message.message_id)
 
 # === ОТПРАВКА СООБЩЕНИЙ ПОДПИСЧИКАМ ===
@@ -500,6 +511,7 @@ async def handle_all_messages(message: Message):
         ]
         
         if message.text not in buttons_texts:
+            # Очищаем старые сообщения
             await cleanup_messages(chat_id)
             
             response = """🤖 <b>Используйте кнопки меню!</b>
